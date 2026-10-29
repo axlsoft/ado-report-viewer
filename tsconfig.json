@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2024"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "strict": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src", "scripts", "test", "vite.config.ts", "playwright.config.ts"]
+}

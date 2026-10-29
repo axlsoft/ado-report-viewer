@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "html-report-tab",
+  "version": "0.1.0",
+  "name": "HTML Report Tab",
+  "publisher": "<PUBLISHER_ID>",
+  "description": "View static HTML reports attached to Azure Pipelines builds.",
+  "public": false,
+  "categories": ["Azure Pipelines"],
+  "targets": [
+    {
+      "id": "Microsoft.VisualStudio.Services"
+    }
+  ],
+  "scopes": ["vso.build"],
+  "contributions": [
+    {
+      "id": "reports-tab",
+      "type": "ms.vss-web.tab",
+      "targets": ["ms.vss-build-web.build-results-view"],
+      "properties": {
+        "name": "Reports",
+        "uri": "dist/tab.html"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "dist",
+      "addressable": true
+    }
+  ]
+}

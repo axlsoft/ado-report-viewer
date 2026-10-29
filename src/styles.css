@@ -1,0 +1,36 @@
+:root {
+  color: var(--text-primary-color, #1f2328);
+  font-family: "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+#app,
+#report-root,
+#report-root > iframe {
+  box-sizing: border-box;
+  height: 100vh;
+  width: 100%;
+}
+
+.report-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.report-toolbar {
+  align-items: center;
+  background: var(--callout-background-color, #f8f8f8);
+  border-bottom: 1px solid var(--border-subtle-color, #d0d7de);
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.report-frame {
+  border: 0;
+  height: 100%;
+  width: 100%;
+}

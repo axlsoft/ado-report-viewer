@@ -1,15 +1,36 @@
 {
   "name": "ado-html-report-viewer",
-  "version": "1.0.0",
-  "description": "",
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private Azure DevOps tab for static HTML build reports.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=26"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm run typecheck && vite build && npm run size",
+    "dev": "vite --host 127.0.0.1",
+    "fixtures": "node test/fixtures/generate.ts",
+    "package": "npm run build && tfx extension create --manifest-globs vss-extension.json --output-path release",
+    "publish": "npm run package && tfx extension publish --vsix $(find release -name '*.vsix' -maxdepth 1 -print -quit) --share-with <ORG_NAME>",
+    "size": "node scripts/check-size.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "verify:vsix": "node scripts/verify-vsix.ts"
+  },
+  "dependencies": {
+    "azure-devops-extension-sdk": "5.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.10.1",
+    "oxlint": "1.90.0",
+    "prettier": "3.9.10",
+    "tfx-cli": "0.24.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   }
 }

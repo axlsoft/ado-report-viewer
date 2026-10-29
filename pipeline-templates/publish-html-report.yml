@@ -1,0 +1,29 @@
+parameters:
+  - name: reportDir
+    type: string
+  - name: name
+    type: string
+  - name: entry
+    type: string
+    default: index.html
+
+steps:
+  - task: ArchiveFiles@2
+    displayName: Zip ${{ parameters.name }} report
+    condition: succeededOrFailed()
+    inputs:
+      rootFolderOrFile: ${{ parameters.reportDir }}
+      includeRootFolder: false
+      archiveType: zip
+      archiveFile: $(Agent.TempDirectory)/html-report-${{ parameters.name }}.zip
+
+  - bash: |
+      set -euo pipefail
+      metadata="$(printf '%s\0%s' "$HTML_REPORT_NAME" "$HTML_REPORT_ENTRY" | base64 | tr '+/' '-_' | tr -d '=')"
+      echo "##vso[task.addattachment type=html-report;name=html-report-v1-${metadata};]$HTML_REPORT_ARCHIVE"
+    displayName: Attach ${{ parameters.name }} report to run
+    condition: succeededOrFailed()
+    env:
+      HTML_REPORT_ARCHIVE: $(Agent.TempDirectory)/html-report-${{ parameters.name }}.zip
+      HTML_REPORT_ENTRY: ${{ parameters.entry }}
+      HTML_REPORT_NAME: ${{ parameters.name }}
