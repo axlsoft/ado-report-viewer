@@ -11,6 +11,8 @@ const PERSISTED_STORAGE_KEYS = new Set(["theme", "filters"]);
 const IN_PROGRESS_POLL_MS = 30_000;
 const app = document.querySelector<HTMLElement>("#app");
 const reportCache = new Map<string, Blob>();
+// Downloads in progress, shared so a report requested again before it arrives is downloaded once.
+const pendingDownloads = new Map<string, Promise<Blob>>();
 let reportFrame: HTMLIFrameElement | undefined;
 let activeReport: BuildReport | undefined;
 let renderedReportIds = "";
@@ -191,8 +193,7 @@ async function downloadAndOpen(report: BuildReport): Promise<void> {
   activeReport = report;
   showStatus(`Loading ${report.displayName}...`);
   try {
-    const archive =
-      reportCache.get(report.id) ?? (await report.download((progress) => showDownloadProgress(report.displayName, progress, sequence)));
+    const archive = await archiveFor(report);
     if (sequence === loadSequence) {
       openReport(report, archive);
       showStatus("");
@@ -207,8 +208,7 @@ async function downloadAndOpen(report: BuildReport): Promise<void> {
 async function downloadArchive(report: BuildReport): Promise<void> {
   try {
     showStatus(`Downloading ${report.displayName}...`);
-    const archive = reportCache.get(report.id) ?? (await report.download((progress) => showDownloadProgress(report.displayName, progress)));
-    remember(report.id, archive);
+    const archive = await archiveFor(report);
     const url = URL.createObjectURL(archive);
     const link = document.createElement("a");
     link.href = url;
@@ -221,16 +221,37 @@ async function downloadArchive(report: BuildReport): Promise<void> {
   }
 }
 
-function showDownloadProgress(displayName: string, progress: DownloadProgress, sequence?: number): void {
-  if (sequence !== undefined && sequence !== loadSequence) {
+/** The report's archive: from the cache, from a download already in progress, or downloaded now. */
+function archiveFor(report: BuildReport): Promise<Blob> {
+  const cached = reportCache.get(report.id);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+  let pending = pendingDownloads.get(report.id);
+  if (!pending) {
+    pending = report
+      .download((progress) => showDownloadProgress(report, progress))
+      .then((archive) => {
+        remember(report.id, archive);
+        return archive;
+      })
+      .finally(() => pendingDownloads.delete(report.id));
+    pendingDownloads.set(report.id, pending);
+  }
+  return pending;
+}
+
+function showDownloadProgress(report: BuildReport, progress: DownloadProgress): void {
+  // A shared download reports progress only while its report is the one being shown.
+  if (activeReport?.id !== report.id) {
     return;
   }
   if (progress.total) {
     const percent = Math.min(100, Math.round((progress.loaded / progress.total) * 100));
-    showStatus(`Loading ${displayName}: ${percent}%`);
+    showStatus(`Loading ${report.displayName}: ${percent}%`);
     return;
   }
-  showStatus(`Loading ${displayName}: ${formatBytes(progress.loaded)} downloaded`);
+  showStatus(`Loading ${report.displayName}: ${formatBytes(progress.loaded)} downloaded`);
 }
 
 function formatBytes(bytes: number): string {

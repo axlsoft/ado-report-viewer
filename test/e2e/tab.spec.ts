@@ -12,6 +12,26 @@ test("switching reports reuses downloaded archives", async ({ page, guard }) => 
   expect(guard.harnessRequests.filter((path) => path === "/__fixtures/static-report.zip")).toHaveLength(1);
 });
 
+test("a report requested again while it downloads is downloaded once", async ({ page, guard }) => {
+  // Hold the archive until the report has been requested three ways: on load, by selecting it again,
+  // and with the download button.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/__fixtures/static-report.zip", async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.goto("/tab.html");
+  await page.getByLabel("Select report").selectOption({ label: "Static site" });
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download .zip" }).click();
+  release();
+
+  expect((await download).suggestedFilename()).toBe("Static site.zip");
+  await expect(reportLocator(page).locator("#result")).toHaveText("passed");
+  expect(guard.harnessRequests.filter((path) => path === "/__fixtures/static-report.zip")).toHaveLength(1);
+});
+
 test("an in-progress run shows its reports and picks up new ones without reloading the open report", async ({ page }) => {
   await page.goto("/tab.html?scenario=in-progress");
   await expect(page.getByText("Run in progress: more reports may appear.")).toBeVisible();
