@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write # required to create tags and GitHub releases
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Test & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history for GitVersion)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup .NET (required by GitVersion)
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.x'
+
+      - name: Setup GitVersion
+        uses: gittools/actions/gitversion/setup@v4
+        with:
+          versionSpec: '6.x'
+
+      - name: Determine version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v4
+
+      # Every push is built and tested, but only some are released:
+      # - Dependabot updates are not released on their own. A merge commit names the dependabot/
+      #   branch; squash and rebase merges keep Dependabot as the author. Their changes ship with
+      #   the next release.
+      # - Commits that do not bump the version (chore, docs, ...) resolve to an existing tag.
+      - name: Decide whether to release
+        id: release
+        env:
+          VERSION: ${{ steps.gitversion.outputs.majorMinorPatch }}
+          HEAD_AUTHOR: ${{ github.event.head_commit.author.username }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          if [[ "$HEAD_AUTHOR" == "dependabot[bot]" || "$HEAD_MESSAGE" =~ ^Merge\ pull\ request\ #[0-9]+\ from\ [^[:space:]]+/dependabot/ ]]; then
+            echo "Dependabot update; skipping the release."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+          elif git rev-parse --verify --quiet "refs/tags/v${VERSION}" > /dev/null; then
+            echo "v${VERSION} already exists; skipping the release."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "create=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (type check and bundle budgets)
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Browser tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      # Marketplace versions must be numeric, so the VSIX uses major.minor.patch.
+      - name: Package and verify VSIX
+        if: steps.release.outputs.create == 'true'
+        run: npm run package && npm run verify:vsix
+        env:
+          EXTENSION_PUBLISHER: ${{ vars.EXTENSION_PUBLISHER }}
+          EXTENSION_VERSION: ${{ steps.gitversion.outputs.majorMinorPatch }}
+
+      - name: Create GitHub release
+        if: steps.release.outputs.create == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.gitversion.outputs.majorMinorPatch }}
+          name: v${{ steps.gitversion.outputs.majorMinorPatch }}
+          generate_release_notes: true
+          files: release/*.vsix

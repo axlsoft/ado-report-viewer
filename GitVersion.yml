@@ -1,0 +1,19 @@
+mode: ContinuousDeployment
+
+commit-message-incrementing: Enabled
+
+# Conventional Commits — bump rules (evaluated major → minor → patch → none)
+# Breaking change: any type with ! suffix, or BREAKING CHANGE in the footer
+major-version-bump-message: '^(\w+)(\(.+\))?!:.+|^[\s\S]+\nBREAKING CHANGE:.+'
+# New feature
+minor-version-bump-message: '^feat(\(.+\))?:.+'
+# Bug fix, performance improvement, or refactor
+patch-version-bump-message: '^(fix|perf|refactor)(\(.+\))?:.+'
+# Non-functional changes produce no version bump
+no-bump-message: '^(build|chore|ci|docs|style|test|revert)(\(.+\))?:.+'
+
+branches:
+  main:
+    # Only the bump messages above change the version. Without this, every commit after a release
+    # (including no-bump and merge commits) would add a patch increment and produce a new release.
+    increment: None
