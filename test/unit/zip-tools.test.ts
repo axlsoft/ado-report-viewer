@@ -46,8 +46,11 @@ afterAll(async () => {
   await rm(workspace, { force: true, recursive: true });
 });
 
+// Starting a tool can take several seconds on a cold CI runner (notably pwsh and its archive module).
+const TOOL_TIMEOUT_MS = 30_000;
+
 describe.each(TOOLS)("archives from $name", (tool) => {
-  it("lists and reads every entry", async (context) => {
+  it("lists and reads every entry", { timeout: TOOL_TIMEOUT_MS }, async (context) => {
     const archivePath = join(workspace, `${tool.name.replace(/\W+/gu, "-")}.zip`);
     try {
       await execFileAsync(tool.command, tool.args(archivePath), { cwd: source });
@@ -60,7 +63,13 @@ describe.each(TOOLS)("archives from $name", (tool) => {
 
     const bytes = await readFile(archivePath);
     if (tool.name.includes("data descriptors")) {
-      expect(bytes.readUInt16LE(6) & 0x08, "data-descriptor flag").toBe(0x08);
+      // Directory entries never use data descriptors (their size is known), and directory order
+      // differs by platform, so check every file entry rather than the first local header.
+      const fileEntries = [...centralDirectoryFlags(bytes)].filter(([name]) => !name.endsWith("/"));
+      expect(fileEntries.length, "file entries").toBe(Object.keys(FILES).length);
+      for (const [name, flags] of fileEntries) {
+        expect(flags & 0x08, `data-descriptor flag of ${name}`).toBe(0x08);
+      }
     }
     const archive = await ZipArchive.open(new Blob([bytes]));
     expect([...archive.list()].sort()).toEqual(Object.keys(FILES).sort());
@@ -69,3 +78,18 @@ describe.each(TOOLS)("archives from $name", (tool) => {
     }
   });
 });
+
+/** General-purpose bit flags of each central directory entry, by entry name. */
+function centralDirectoryFlags(bytes: Buffer): Map<string, number> {
+  const eocd = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const count = bytes.readUInt16LE(eocd + 10);
+  let offset = bytes.readUInt32LE(eocd + 16);
+  const flags = new Map<string, number>();
+  for (let index = 0; index < count; index += 1) {
+    const nameLength = bytes.readUInt16LE(offset + 28);
+    const name = bytes.toString("utf8", offset + 46, offset + 46 + nameLength);
+    flags.set(name, bytes.readUInt16LE(offset + 8));
+    offset += 46 + nameLength + bytes.readUInt16LE(offset + 30) + bytes.readUInt16LE(offset + 32);
+  }
+  return flags;
+}
