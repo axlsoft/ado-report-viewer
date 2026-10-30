@@ -4,11 +4,19 @@ export interface ReportDescriptor {
   entryPath: string;
 }
 
+/** Theme values for the frame's own messages. The tab receives the Azure DevOps theme; the frame does not. */
+export interface FrameAppearance {
+  accent: string;
+  color: string;
+  fontFamily: string;
+}
+
 export interface LoadReportMessage {
   type: "load-report";
   report: ReportDescriptor;
   archive: Blob;
   storage?: Record<string, string>;
+  appearance?: FrameAppearance;
 }
 
 export interface FrameStatusMessage {
@@ -40,8 +48,13 @@ export function isLoadReportMessage(value: unknown): value is LoadReportMessage 
     typeof value.report.id === "string" &&
     typeof value.report.displayName === "string" &&
     typeof value.report.entryPath === "string" &&
-    (value.storage === undefined || isStringRecord(value.storage))
+    (value.storage === undefined || isStringRecord(value.storage)) &&
+    (value.appearance === undefined || isAppearance(value.appearance))
   );
+}
+
+function isAppearance(value: unknown): value is FrameAppearance {
+  return isRecord(value) && typeof value.accent === "string" && typeof value.color === "string" && typeof value.fontFamily === "string";
 }
 
 export function isFrameToTabMessage(value: unknown): value is FrameToTabMessage {

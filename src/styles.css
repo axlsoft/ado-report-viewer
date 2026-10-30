@@ -37,14 +37,37 @@ body {
   min-width: 0;
 }
 
+/* Neutral controls derive from the text color, which follows the Azure DevOps theme (light, dark,
+   or high contrast), so they never depend on theme variables that may not exist. */
 .report-choice,
-.download-report {
-  background: var(--button-secondary-background, #fff);
-  border: 1px solid var(--button-secondary-border, #8c959f);
+.download-report,
+.report-choices select {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
   border-radius: 4px;
   color: inherit;
+  cursor: pointer;
+  font: inherit;
   min-height: 28px;
   padding: 4px 8px;
+}
+
+/* A drop-down list needs an opaque background for its options to stay readable. */
+.report-choices select {
+  background: var(--callout-background-color, #f8f8f8);
+  max-width: 320px;
+}
+
+.report-choice:hover,
+.download-report:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.report-choice:focus-visible,
+.download-report:focus-visible,
+.report-choices select:focus-visible {
+  outline: 2px solid var(--communication-background, #0078d4);
+  outline-offset: 1px;
 }
 
 .report-choice {
@@ -54,7 +77,8 @@ body {
   white-space: nowrap;
 }
 
-.report-choice.is-active {
+.report-choice.is-active,
+.report-choice.is-active:hover {
   background: var(--communication-background, #0078d4);
   border-color: var(--communication-background, #0078d4);
   color: var(--text-on-communication-background, #fff);

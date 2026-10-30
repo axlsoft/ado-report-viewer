@@ -1,6 +1,6 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { createAdoReportSource } from "./ado";
-import { isFrameToTabMessage, type ReportDescriptor } from "./protocol";
+import { isFrameToTabMessage, type FrameAppearance, type ReportDescriptor } from "./protocol";
 import type { BuildReport, DownloadProgress, ReportList, ReportSource } from "./reports";
 import "./styles.css";
 
@@ -323,7 +323,7 @@ function openReport(report: BuildReport, archive: Blob): void {
   const descriptor: ReportDescriptor = { id: report.id, displayName: report.displayName, entryPath: report.entryPath };
   const storage = readPersistedStorage(report.storageScope);
   reportFrame.addEventListener("load", () => {
-    reportFrame?.contentWindow?.postMessage({ type: "load-report", report: descriptor, archive, storage }, "*");
+    reportFrame?.contentWindow?.postMessage({ type: "load-report", report: descriptor, archive, storage, appearance: currentAppearance() }, "*");
   });
   reportFrame.addEventListener("error", () => showStatus("Unable to load the report frame."));
   shell.append(reportFrame);
@@ -343,6 +343,16 @@ window.addEventListener("message", (event) => {
     }
   }
 });
+
+/** The theme the frame should use for its own messages (resolved from Azure DevOps theme variables). */
+function currentAppearance(): FrameAppearance {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    accent: style.getPropertyValue("--communication-background").trim() || "#0078d4",
+    color: style.color,
+    fontFamily: style.fontFamily,
+  };
+}
 
 function remember(id: string, archive: Blob): void {
   reportCache.delete(id);

@@ -12,6 +12,15 @@ describe("postMessage protocol", () => {
     ).toBe(true);
   });
 
+  it("accepts a theme for the frame and rejects a malformed one", () => {
+    const message = { type: "load-report", archive: new Blob(["zip"]), report: { id: "report", displayName: "E2E", entryPath: "index.html" } };
+    const appearance = { accent: "#0078d4", color: "rgb(255, 255, 255)", fontFamily: "Segoe UI" };
+
+    expect(isLoadReportMessage({ ...message, appearance })).toBe(true);
+    expect(isLoadReportMessage({ ...message, appearance: { ...appearance, color: 1 } })).toBe(false);
+    expect(isLoadReportMessage({ ...message, appearance: "dark" })).toBe(false);
+  });
+
   it("rejects unknown frame commands", () => {
     expect(isFrameToTabMessage({ type: "fetch-with-token", url: "https://example.test" })).toBe(false);
   });

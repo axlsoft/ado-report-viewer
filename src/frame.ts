@@ -1,6 +1,7 @@
 import {
   isDocumentToFrameMessage,
   isLoadReportMessage,
+  type FrameAppearance,
   type FrameStatusMessage,
   type RenderDocumentMessage,
   type ReportDescriptor,
@@ -36,6 +37,7 @@ let documentFrame: HTMLIFrameElement | undefined;
 
 window.addEventListener("message", (event) => {
   if (event.source === window.parent && isLoadReportMessage(event.data)) {
+    applyAppearance(event.data.appearance);
     void loadReport(event.data.report, event.data.archive, event.data.storage ?? {});
     return;
   }
@@ -70,7 +72,8 @@ async function loadReport(report: ReportDescriptor, archiveBlob: Blob, storage: 
   try {
     activeArchive = await ZipArchive.open(archiveBlob);
   } catch (error) {
-    showError(error);
+    const detail = error instanceof Error ? ` (${error.message})` : "";
+    showError(new Error(`This report archive could not be opened${detail}. It may be damaged or not a ZIP file.`));
     return;
   }
 
@@ -117,6 +120,7 @@ function showEntryChoice(candidates: string[]): void {
     list.append(item);
   }
   const heading = document.createElement("p");
+  heading.className = "frame-message";
   heading.textContent = "Choose the report entry page:";
   root.replaceChildren(heading, list);
 }
@@ -223,10 +227,24 @@ function postToOpaqueWindow(target: WindowProxy, message: unknown): void {
   target.postMessage(message, "*");
 }
 
+function applyAppearance(appearance: FrameAppearance | undefined): void {
+  if (!appearance) {
+    return;
+  }
+  const style = document.documentElement.style;
+  style.color = appearance.color;
+  style.fontFamily = appearance.fontFamily;
+  style.setProperty("--accent", appearance.accent);
+}
+
 function showError(error: unknown): void {
   const detail = error instanceof Error ? error.message : "Unable to render this report archive.";
   if (root) {
-    root.textContent = detail;
+    const message = document.createElement("p");
+    message.className = "frame-message";
+    message.setAttribute("role", "alert");
+    message.textContent = detail;
+    root.replaceChildren(message);
   }
   postToOpaqueWindow(window.parent, { type: "frame-status", status: "error", detail } satisfies FrameStatusMessage);
 }

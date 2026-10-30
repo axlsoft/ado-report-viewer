@@ -11,6 +11,41 @@
         height: 100%;
         margin: 0;
       }
+      html {
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+      }
+      .frame-message {
+        margin: 0;
+        padding: 16px;
+      }
+      /* Matches the tab's neutral buttons: derived from the text color, which follows the theme. */
+      .entry-choice {
+        align-items: flex-start;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        list-style: none;
+        margin: 0;
+        padding: 0 16px;
+      }
+      .entry-choice button {
+        background: transparent;
+        border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 4px;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        min-height: 28px;
+        padding: 4px 8px;
+      }
+      .entry-choice button:hover {
+        background: color-mix(in srgb, currentColor 10%, transparent);
+      }
+      .entry-choice button:focus-visible {
+        outline: 2px solid var(--accent, #0078d4);
+        outline-offset: 1px;
+      }
       #report-root > iframe {
         border: 0;
         display: block;
@@ -20,7 +55,8 @@
     </style>
   </head>
   <body>
-    <main id="report-root">Waiting for a report archive.</main>
+    <!-- Empty until a report arrives: the tab shows loading progress, and this document has no theme yet. -->
+    <main id="report-root"></main>
     <script type="module" src="./frame.ts"></script>
   </body>
 </html>
