@@ -1,0 +1,65 @@
+version: 2
+
+# Commit prefixes are Conventional Commit types that GitVersion treats as no-bump (build, ci), and
+# release.yml skips Dependabot merges, so dependency updates never cut a release on their own.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    # Let new releases age before proposing them, which limits exposure to compromised packages.
+    cooldown:
+      default-days: 3
+      semver-major-days: 14
+    # Dependencies are pinned to exact versions; updates keep them pinned.
+    versioning-strategy: increase
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    groups:
+      # Security fixes arrive together, outside the weekly batch.
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+      # Playwright and its Allure adapter must move together with the browsers the tests install.
+      playwright:
+        patterns:
+          - '@playwright/*'
+          - allure-playwright
+        update-types:
+          - minor
+          - patch
+      production:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    # Major updates are not grouped: each gets its own pull request.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - '*'
