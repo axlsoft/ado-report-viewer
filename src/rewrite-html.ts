@@ -9,14 +9,13 @@ export async function rewriteHtml(html: string, documentPath: string, resolver: 
 
   for (const element of elements) {
     for (const attribute of URL_ATTRIBUTES) {
-      await rewriteAttribute(element, attribute, documentPath, resolver);
+      deferAttribute(element, attribute, documentPath);
     }
     if (element.matches("link[rel~='stylesheet'], script[src], source[src], track[src], object[data], embed[src], use[href]")) {
-      await rewriteAttribute(element, element.hasAttribute("href") ? "href" : "src", documentPath, resolver);
+      deferAttribute(element, element.hasAttribute("href") ? "href" : "src", documentPath);
     }
     if (element.hasAttribute("srcset")) {
-      const rewritten = await rewriteSrcset(element.getAttribute("srcset") ?? "", documentPath, resolver);
-      element.setAttribute("srcset", rewritten);
+      deferSrcset(element, documentPath);
     }
   }
 
@@ -27,7 +26,8 @@ export async function rewriteHtml(html: string, documentPath: string, resolver: 
       anchor.dataset.reportPath = path;
       anchor.href = "#";
     } else if (path) {
-      anchor.href = await resolver.resourceUrl(path);
+      anchor.dataset.reportReference = path;
+      anchor.href = "#";
     }
   }
 
@@ -39,28 +39,24 @@ export async function rewriteHtml(html: string, documentPath: string, resolver: 
   return `<!doctype html>\n${parsed.documentElement.outerHTML}`;
 }
 
-async function rewriteAttribute(
-  element: HTMLElement,
-  attribute: string,
-  documentPath: string,
-  resolver: ResourceResolver,
-): Promise<void> {
+function deferAttribute(element: HTMLElement, attribute: string, documentPath: string): void {
   const reference = element.getAttribute(attribute);
   if (!reference) {
     return;
   }
   const path = resolveArchivePath(documentPath, reference);
   if (path) {
-    element.setAttribute(attribute, await resolver.resourceUrl(path));
+    element.dataset.reportReference = path;
+    element.setAttribute(attribute, "about:blank");
   }
 }
 
-async function rewriteSrcset(value: string, documentPath: string, resolver: ResourceResolver): Promise<string> {
-  return Promise.all(
-    value.split(",").map(async (candidate) => {
-      const [reference, ...descriptor] = candidate.trim().split(/\s+/u);
-      const path = resolveArchivePath(documentPath, reference);
-      return path ? `${await resolver.resourceUrl(path)} ${descriptor.join(" ")}`.trim() : candidate.trim();
-    }),
-  ).then((candidates) => candidates.join(", "));
+function deferSrcset(element: HTMLElement, documentPath: string): void {
+  const candidates = (element.getAttribute("srcset") ?? "").split(",").map((candidate) => {
+    const [reference, ...descriptor] = candidate.trim().split(/\s+/u);
+    const path = resolveArchivePath(documentPath, reference);
+    return path ? `${path} ${descriptor.join(" ")}`.trim() : candidate.trim();
+  });
+  element.dataset.reportSrcset = candidates.join(", ");
+  element.setAttribute("srcset", "");
 }

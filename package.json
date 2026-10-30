@@ -16,7 +16,7 @@
     "publish": "npm run package && tfx extension publish --vsix $(find release -name '*.vsix' -maxdepth 1 -print -quit) --share-with <ORG_NAME>",
     "size": "node scripts/check-size.ts",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run fixtures && playwright test",
     "typecheck": "tsc --noEmit",
     "verify:vsix": "node scripts/verify-vsix.ts"
   },

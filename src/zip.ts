@@ -152,7 +152,7 @@ export class ZipArchive {
 async function inflate(compressed: Blob, entry: ZipEntry, maxEntryBytes: number): Promise<Blob> {
   const stream = compressed.stream().pipeThrough(new DecompressionStream("deflate-raw"));
   const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
   let bytesRead = 0;
 
   try {
@@ -166,7 +166,7 @@ async function inflate(compressed: Blob, entry: ZipEntry, maxEntryBytes: number)
         await reader.cancel("Decompressed data exceeds ZIP metadata");
         throw new Error(`Inflated entry exceeds declared size: ${entry.name}`);
       }
-      chunks.push(value);
+      chunks.push(new Uint8Array(value));
     }
   } finally {
     reader.releaseLock();
