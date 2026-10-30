@@ -9,22 +9,27 @@
       // `location` is a real hierarchical URL: reports that build URLs from `location.href` or route
       // with the history API work, and back/forward between report pages uses native frame history.
       // Blob URLs created here belong to this document, so they stay valid for the report's lifetime.
+      // Writing the report HTML is this document's purpose: it is accepted only from the report frame
+      // (the parent, served from the extension origin that this document's URL also has), and it runs
+      // with an opaque origin under the report Content-Security-Policy.
       (function () {
+        var extensionOrigin = new URL(location.href).origin;
         addEventListener("message", function render(event) {
           var data = event.data;
-          if (event.source !== parent || !data || data.type !== "render-document" || typeof data.html !== "string") {
+          if (event.source !== parent || event.origin !== extensionOrigin || !data || data.type !== "render-document" || typeof data.html !== "string") {
             return;
           }
           removeEventListener("message", render);
-          var urls = {};
+          // A Map, not an object: tokens come from the message and must not reach Object.prototype.
+          var urls = new Map();
           var replaceTokens = function (text) {
             return text.replace(/__report_resource_\d+__/g, function (token) {
-              return urls[token] || token;
+              return urls.get(token) || token;
             });
           };
           data.resources.forEach(function (resource) {
             var blob = typeof resource.css === "string" ? new Blob([replaceTokens(resource.css)], { type: "text/css" }) : resource.blob;
-            urls[resource.token] = URL.createObjectURL(blob);
+            urls.set(resource.token, URL.createObjectURL(blob));
           });
           document.open();
           document.write(replaceTokens(data.html));
