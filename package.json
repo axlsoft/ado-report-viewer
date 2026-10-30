@@ -12,13 +12,16 @@
     "build": "npm run typecheck && vite build && npm run size",
     "dev": "vite --host 127.0.0.1",
     "fixtures": "node test/fixtures/generate.ts",
-    "package": "npm run build && tfx extension create --manifest-globs vss-extension.json --output-path release",
-    "publish": "npm run package && tfx extension publish --vsix $(find release -name '*.vsix' -maxdepth 1 -print -quit) --share-with <ORG_NAME>",
+    "package": "npm run build && node --env-file-if-exists=.env scripts/extension.ts create",
+    "publish": "npm run package && node --env-file-if-exists=.env scripts/extension.ts publish",
     "size": "node scripts/check-size.ts",
     "test": "vitest run",
     "test:e2e": "npm run fixtures && playwright test",
     "typecheck": "tsc --noEmit",
-    "verify:vsix": "node scripts/verify-vsix.ts"
+    "verify:vsix": "node scripts/verify-vsix.ts",
+    "harness": "VITE_REPORT_HARNESS=1 vite build --outDir ../.harness-dist --emptyOutDir && vite preview --outDir ../.harness-dist --host 127.0.0.1 --port 4173 --strictPort",
+    "icon": "node scripts/generate-icon.ts",
+    "lint": "oxlint src test scripts"
   },
   "dependencies": {
     "azure-devops-extension-sdk": "5.0.0"
@@ -26,8 +29,12 @@
   "devDependencies": {
     "@playwright/test": "1.64.1",
     "@types/node": "24.10.1",
+    "allure": "3.22.1",
+    "allure-playwright": "3.14.0",
+    "nyc": "18.0.0",
     "oxlint": "1.90.0",
     "prettier": "3.9.10",
+    "reporting-labs": "0.6.22",
     "tfx-cli": "0.24.2",
     "typescript": "7.0.2",
     "vite": "8.3.5",

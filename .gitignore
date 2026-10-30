@@ -1,7 +1,10 @@
 node_modules/
 dist/
+.harness-dist/
 release/
 playwright-report/
 test-results/
 test/fixtures/generated/
 .DS_Store
+docs/
+.env
