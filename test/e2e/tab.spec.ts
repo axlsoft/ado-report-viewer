@@ -27,7 +27,8 @@ test("a report requested again while it downloads is downloaded once", async ({ 
   await page.getByRole("button", { name: "Download .zip" }).click();
   release();
 
-  expect((await download).suggestedFilename()).toBe("Static site.zip");
+  // Browsers may sanitize the suggested name (WebKit on Linux replaces spaces with underscores).
+  expect((await download).suggestedFilename()).toMatch(/^Static[ _]site\.zip$/u);
   await expect(reportLocator(page).locator("#result")).toHaveText("passed");
   expect(guard.harnessRequests.filter((path) => path === "/__fixtures/static-report.zip")).toHaveLength(1);
 });
