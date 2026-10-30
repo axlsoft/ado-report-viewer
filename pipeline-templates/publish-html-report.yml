@@ -19,7 +19,7 @@ steps:
 
   - bash: |
       set -euo pipefail
-      metadata="$(printf '%s\0%s' "$HTML_REPORT_NAME" "$HTML_REPORT_ENTRY" | base64 | tr '+/' '-_' | tr -d '=')"
+      metadata="$(printf '%s\0%s' "$HTML_REPORT_NAME" "$HTML_REPORT_ENTRY" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
       echo "##vso[task.addattachment type=html-report;name=html-report-v1-${metadata};]$HTML_REPORT_ARCHIVE"
     displayName: Attach ${{ parameters.name }} report to run
     condition: succeededOrFailed()

@@ -125,8 +125,10 @@ export class ZipArchive {
       }
 
       const nameBytes = new Uint8Array(directory.buffer, directory.byteOffset + cursor + 46, nameLength);
-      const name = normalizeArchivePath(decoder.decode(nameBytes));
-      if (name && !name.endsWith("/")) {
+      const rawName = decoder.decode(nameBytes);
+      const name = normalizeArchivePath(rawName);
+      // Directory entries end with a separator; normalization would strip it.
+      if (name && !/[/\\]$/u.test(rawName)) {
         this.entries.set(name, { compressionMethod, compressedSize, localHeaderOffset, name, uncompressedSize });
       }
       cursor = entryEnd;

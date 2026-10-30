@@ -19,8 +19,13 @@ export function normalizeArchivePath(path: string): string {
   return segments.join("/");
 }
 
+/**
+ * Resolves a reference found in a report document (or sent by the runtime shim) to an archive path.
+ * References starting with a single "/" are relative to the archive root. URL percent-escapes are
+ * decoded because ZIP entry names are stored unescaped.
+ */
 export function resolveArchivePath(documentPath: string, reference: string): string | undefined {
-  if (/^(?:[a-z][a-z\d+.-]*:|#)/iu.test(reference)) {
+  if (/^(?:[a-z][a-z\d+.-]*:|#|\/\/)/iu.test(reference)) {
     return undefined;
   }
 
@@ -30,5 +35,17 @@ export function resolveArchivePath(documentPath: string, reference: string): str
   }
 
   const base = documentPath.includes("/") ? documentPath.slice(0, documentPath.lastIndexOf("/") + 1) : "";
-  return normalizeArchivePath(pathname.startsWith("/") ? pathname : `${base}${pathname}`);
+  return normalizeArchivePath(decodePath(pathname.startsWith("/") ? pathname : `${base}${pathname}`));
+}
+
+export function isHtmlPath(path: string): boolean {
+  return /\.x?html?$/iu.test(path);
+}
+
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }

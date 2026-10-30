@@ -20,7 +20,6 @@
     "typecheck": "tsc --noEmit",
     "verify:vsix": "node scripts/verify-vsix.ts",
     "harness": "VITE_REPORT_HARNESS=1 vite build --outDir ../.harness-dist --emptyOutDir && vite preview --outDir ../.harness-dist --host 127.0.0.1 --port 4173 --strictPort",
-    "icon": "node scripts/generate-icon.ts",
     "lint": "oxlint src test scripts"
   },
   "dependencies": {
