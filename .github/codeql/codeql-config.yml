@@ -1,0 +1,15 @@
+name: CodeQL configuration
+
+queries:
+  - uses: security-extended
+
+# Build output, dependencies, and generated test fixtures (third-party report bundles) are not
+# project source.
+paths-ignore:
+  - node_modules
+  - dist
+  - .harness-dist
+  - release
+  - playwright-report
+  - test-results
+  - test/fixtures/generated
