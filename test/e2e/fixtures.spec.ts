@@ -25,13 +25,16 @@ test.describe("hand-written static site", () => {
 
   test("navigates to a second page and back with history", async ({ page }) => {
     const report = await openReport(page, "Static site");
-    // Let the page's own fetch settle; WebKit reports a fetch aborted by navigation as an unhandled rejection.
+    // Let the summary page's own fetch settle before every navigation away from it (including after
+    // returning with history, which loads it again); WebKit reports a fetch aborted by navigation as
+    // an unhandled rejection.
     await expect(report.locator("#result")).toHaveText("passed");
 
     await report.getByRole("link", { name: "View details" }).click();
     await expect(report.getByRole("heading", { name: "Details" })).toBeVisible();
     await historyGo(page, -1);
     await expect(report.getByRole("heading", { name: "Static report fixture" })).toBeVisible();
+    await expect(report.locator("#result")).toHaveText("passed");
     await historyGo(page, 1);
     await expect(report.getByRole("heading", { name: "Details" })).toBeVisible();
     await report.getByRole("link", { name: "Back to summary" }).click();
