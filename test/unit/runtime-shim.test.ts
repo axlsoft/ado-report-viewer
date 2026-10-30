@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { runtimeShim } from "../../src/runtime-shim";
 
+const SCRIPT_OPEN = "<script>";
+const SCRIPT_CLOSE = "</script>";
+
+/** Strips the exact wrapper runtimeShim emits; anything else fails the test. */
 function scriptBody(markup: string): string {
-  return markup.replace(/^<script>/u, "").replace(/<\/script>$/u, "");
+  expect(markup.startsWith(SCRIPT_OPEN) && markup.endsWith(SCRIPT_CLOSE), "script wrapper").toBe(true);
+  return markup.slice(SCRIPT_OPEN.length, -SCRIPT_CLOSE.length);
 }
 
 describe("runtimeShim", () => {
