@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { runtimeShim } from "../../src/runtime-shim";
 
+function scriptBody(markup: string): string {
+  return markup.replace(/^<script>/u, "").replace(/<\/script>$/u, "");
+}
+
 describe("runtimeShim", () => {
   it("emits syntactically valid JavaScript", () => {
-    const script = runtimeShim("index.html", { theme: "dark" })
-      .replace(/^<script>/u, "")
-      .replace(/<\/script>$/u, "");
-
-    expect(() => new Function(script)).not.toThrow();
+    expect(() => new Function(scriptBody(runtimeShim("index.html", { theme: "dark" })))).not.toThrow();
   });
 
-  it("preserves regex escapes in the emitted script", () => {
-    const script = runtimeShim("index.html", {});
+  it("keeps report-controlled values from closing the script element", () => {
+    const markup = runtimeShim("pages/</script><img src=x>.html", { theme: "</script><script>alert(1)</script>" });
 
-    expect(script).toContain(String.raw`/url\(\s*(['"]?)(.*?)\1\s*\)/giu`);
-    expect(script).toContain(String.raw`split(/\s+/u)`);
-    expect(script).not.toContain("split(/s+/u)");
+    expect(scriptBody(markup)).not.toMatch(/<\/script|<!--/iu);
+    expect(() => new Function(scriptBody(markup))).not.toThrow();
   });
 });

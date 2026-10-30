@@ -1,82 +1,192 @@
 import * as SDK from "azure-devops-extension-sdk";
-import type { ReportDescriptor } from "./protocol";
+import { decodeAttachmentName, disambiguateReports, type BuildReport, type DownloadProgress, type ReportList, type ReportSource } from "./reports";
 
 const BUILD_RESOURCE_AREA_ID = "54572c7b-bbd3-45d4-80dc-28be08941620";
+const BUILD_PAGE_DATA_SERVICE = "ms.vss-build-web.build-page-data-service";
 const ATTACHMENT_TYPE = "html-report";
 const API_VERSION = "7.1";
+const BUILD_CONTEXT_TIMEOUT_MS = 10_000;
+// Get Attachment route: {project}/_apis/build/builds/{buildId}/{timelineId}/{recordId}/attachments/{type}/{name}
+const ATTACHMENT_LINK = /\/builds\/\d+\/([\da-f-]{36})\/([\da-f-]{36})\/attachments\//iu;
+
+interface BuildResultsConfiguration {
+  buildId?: number | string;
+  onBuildChanged?: (handler: (build: { id: number }) => void) => void;
+}
 
 interface LocationService {
   getResourceAreaLocation(resourceAreaId: string): Promise<string | undefined>;
 }
 
-interface BuildAttachment {
+interface BuildPageDataService {
+  getBuildPageData(): { build?: { id: number } } | undefined | Promise<{ build?: { id: number } } | undefined>;
+}
+
+interface BuildResponse {
+  definition?: { id: number };
+  status?: string | number;
+}
+
+interface AttachmentResponse {
   name: string;
+  _links?: { self?: { href?: string } };
 }
 
-interface AttachmentListResponse {
-  value: BuildAttachment[];
+interface TimelineResponse {
+  records?: { id: string; parentId?: string | null; type?: string; name?: string }[];
 }
 
-export interface BuildReport extends ReportDescriptor {
-  download(onProgress?: (progress: DownloadProgress) => void): Promise<Blob>;
-}
+/**
+ * Report source for the build-results tab. The build comes from the tab configuration's
+ * `onBuildChanged` (which also signals later updates), its `buildId`, or the build page data service.
+ */
+export async function createAdoReportSource(): Promise<ReportSource> {
+  const configuration = SDK.getConfiguration() as BuildResultsConfiguration;
+  const listeners: (() => void)[] = [];
+  let buildId = validBuildId(configuration.buildId);
+  let resolveFirstBuild: (() => void) | undefined;
+  const firstBuild = new Promise<void>((resolve) => (resolveFirstBuild = resolve));
 
-export interface DownloadProgress {
-  loaded: number;
-  total?: number;
-}
-
-export async function listBuildReports(): Promise<BuildReport[]> {
-  const configuration = SDK.getConfiguration() as { buildId?: number | string };
-  const buildId = Number(configuration.buildId);
-  if (!Number.isSafeInteger(buildId) || buildId <= 0) {
-    return [];
+  if (typeof configuration.onBuildChanged === "function") {
+    // The host calls this once on registration, then again whenever the run updates (status, new
+    // attachments, or a different run); every later call reloads the report list.
+    let calls = 0;
+    configuration.onBuildChanged((build) => {
+      const changed = validBuildId(build?.id);
+      if (changed === undefined) {
+        return;
+      }
+      buildId = changed;
+      resolveFirstBuild?.();
+      if (calls++ > 0) {
+        listeners.forEach((listener) => listener());
+      }
+    });
+  }
+  if (buildId === undefined) {
+    buildId = await buildIdFromPageData();
   }
 
   const context = SDK.getWebContext();
   if (!context.project?.id) {
     throw new Error("The report tab requires a project build context.");
   }
+  const projectId = context.project.id;
   const locationService = await SDK.getService<LocationService>("ms.vss-web.location-service");
   const baseUrl = await locationService.getResourceAreaLocation(BUILD_RESOURCE_AREA_ID);
   if (!baseUrl) {
     throw new Error("The Azure DevOps Build service location is unavailable.");
   }
+  const projectUrl = `${baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`}${encodeURIComponent(projectId)}/_apis/build/builds`;
 
-  const collectionUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const endpoint = `${collectionUrl}${encodeURIComponent(context.project.id)}/_apis/build/builds/${buildId}/attachments/${ATTACHMENT_TYPE}`;
-  const token = await SDK.getAccessToken();
-  const response = await fetch(`${endpoint}?api-version=${API_VERSION}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!response.ok) {
-    throw new Error(`Unable to list report attachments (HTTP ${response.status}).`);
-  }
-
-  const attachments = (await response.json()) as AttachmentListResponse;
-  return attachments.value.flatMap((attachment) => {
-    const metadata = decodeAttachmentName(attachment.name);
-    if (!metadata) {
-      return [];
-    }
-    return [
-      {
-        id: attachment.name,
-        displayName: metadata.name,
-        entryPath: metadata.entryPath,
-        download: () => downloadAttachment(endpoint, attachment.name, token),
-      },
-    ];
-  });
+  return {
+    onChange: (listener) => listeners.push(listener),
+    load: async () => {
+      if (buildId === undefined) {
+        await Promise.race([firstBuild, delay(BUILD_CONTEXT_TIMEOUT_MS)]);
+      }
+      if (buildId === undefined) {
+        throw new Error("This tab could not determine which pipeline run to show.");
+      }
+      return loadReports(projectUrl, projectId, buildId);
+    },
+  };
 }
 
-async function downloadAttachment(
-  endpoint: string,
-  name: string,
-  token: string,
-  onProgress?: (progress: DownloadProgress) => void,
-): Promise<Blob> {
-  const response = await fetch(`${endpoint}/${encodeURIComponent(name)}?api-version=${API_VERSION}`, {
-    headers: { Authorization: `Bearer ${token}` },
+async function loadReports(projectUrl: string, projectId: string, buildId: number): Promise<ReportList> {
+  const buildUrl = `${projectUrl}/${buildId}`;
+  const [build, attachments] = await Promise.all([
+    getJson<BuildResponse>(buildUrl, "load the pipeline run"),
+    getJson<{ value: AttachmentResponse[] }>(`${buildUrl}/attachments/${ATTACHMENT_TYPE}`, "list report attachments"),
+  ]);
+  const definitionId = build.definition?.id;
+  const pipelineScope = definitionId === undefined ? `build-${buildId}` : `pipeline-${definitionId}`;
+
+  const parsed = attachments.value.flatMap((attachment) => {
+    const metadata = decodeAttachmentName(attachment.name);
+    const link = ATTACHMENT_LINK.exec(attachment._links?.self?.href ?? "");
+    if (!metadata || !link) {
+      return [];
+    }
+    const [, timelineId, recordId] = link;
+    return [{ attachment, metadata, recordId, downloadUrl: `${buildUrl}/${timelineId}/${recordId}/attachments/${ATTACHMENT_TYPE}/${encodeURIComponent(attachment.name)}` }];
   });
+
+  const names = parsed.map(({ metadata }) => metadata.name);
+  const jobNames = names.length === new Set(names).size ? new Map<string, string>() : await jobNamesByRecord(buildUrl);
+
+  const reports = parsed.map(({ attachment, metadata, recordId, downloadUrl }): BuildReport => ({
+    id: `${buildId}/${recordId}/${attachment.name}`,
+    displayName: metadata.name,
+    entryPath: metadata.entryPath,
+    jobName: jobNames.get(recordId),
+    storageScope: `${pipelineScope}:${metadata.name}`,
+    download: (onProgress) => downloadAttachment(downloadUrl, onProgress),
+  }));
+
+  return {
+    reports: disambiguateReports(reports),
+    inProgress: !isCompleted(build.status),
+    pipelineKey: `${projectId}:${pipelineScope}`,
+  };
+}
+
+/** Maps each timeline record to the name of the job containing it (attachments come from task records). */
+async function jobNamesByRecord(buildUrl: string): Promise<Map<string, string>> {
+  const timeline = await getJson<TimelineResponse>(`${buildUrl}/timeline`, "load the run timeline").catch(() => ({ records: [] }));
+  const records = new Map((timeline.records ?? []).map((record) => [record.id, record]));
+  const jobNames = new Map<string, string>();
+  for (const record of records.values()) {
+    let current: typeof record | undefined = record;
+    for (let depth = 0; current && depth < 10; depth += 1) {
+      if (current.type === "Job" && current.name) {
+        jobNames.set(record.id, current.name);
+        break;
+      }
+      current = current.parentId ? records.get(current.parentId) : undefined;
+    }
+  }
+  return jobNames;
+}
+
+function isCompleted(status: string | number | undefined): boolean {
+  // The REST API serializes BuildStatus as a camelCase string; the numeric value of Completed is 2.
+  return status === "completed" || status === 2;
+}
+
+async function getJson<T>(url: string, action: string): Promise<T> {
+  const response = await fetch(`${url}?api-version=${API_VERSION}`, { headers: await authorization() });
+  if (!response.ok) {
+    throw new Error(`Unable to ${action} (HTTP ${response.status}).`);
+  }
+  return (await response.json()) as T;
+}
+
+async function authorization(): Promise<HeadersInit> {
+  // Requested per call: access tokens expire, and a tab can stay open for a long run.
+  return { Authorization: `Bearer ${await SDK.getAccessToken()}` };
+}
+
+async function buildIdFromPageData(): Promise<number | undefined> {
+  try {
+    const service = await SDK.getService<BuildPageDataService>(BUILD_PAGE_DATA_SERVICE);
+    return validBuildId((await service.getBuildPageData())?.build?.id);
+  } catch {
+    return undefined;
+  }
+}
+
+function validBuildId(value: unknown): number | undefined {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function downloadAttachment(url: string, onProgress?: (progress: DownloadProgress) => void): Promise<Blob> {
+  const response = await fetch(`${url}?api-version=${API_VERSION}`, { headers: await authorization() });
   if (!response.ok) {
     throw new Error(`Unable to download report archive (HTTP ${response.status}).`);
   }
@@ -105,27 +215,5 @@ async function downloadAttachment(
   } finally {
     reader.releaseLock();
   }
-
-  const bytes = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new Blob([bytes], { type: response.headers.get("content-type") ?? "application/zip" });
-}
-
-function decodeAttachmentName(name: string): { entryPath: string; name: string } | undefined {
-  const match = /^html-report-v1-([A-Za-z0-9_-]+)$/u.exec(name);
-  if (!match) {
-    return undefined;
-  }
-  try {
-    const padded = match[1].replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(match[1].length / 4) * 4, "=");
-    const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
-    const [displayName, entryPath, extra] = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split("\0");
-    return displayName && entryPath && !extra ? { name: displayName, entryPath } : undefined;
-  } catch {
-    return undefined;
-  }
+  return new Blob(chunks, { type: "application/zip" });
 }

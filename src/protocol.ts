@@ -67,3 +67,63 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }
+
+// Messages between the report frame (virtual file server) and the sandboxed report document.
+
+/** A resource sent with a rendered document. `css` holds stylesheet text whose references are tokens. */
+export interface DocumentResource {
+  token: string;
+  blob: Blob;
+  css?: string;
+}
+
+export interface RenderDocumentMessage {
+  type: "render-document";
+  html: string;
+  resources: DocumentResource[];
+}
+
+export interface ResourceResponseMessage {
+  type: "resource-response";
+  id: string;
+  blob?: Blob;
+  error?: string;
+}
+
+export interface DocumentReadyMessage {
+  type: "document-ready";
+  search: string;
+}
+
+export interface ResourceRequestMessage {
+  type: "resource-request";
+  id: string;
+  documentPath: string;
+  reference: string;
+}
+
+export interface NavigateMessage {
+  type: "navigate";
+  documentPath: string;
+  reference: string;
+}
+
+export type DocumentToFrameMessage = DocumentReadyMessage | ResourceRequestMessage | NavigateMessage | StorageWriteMessage;
+
+export function isDocumentToFrameMessage(value: unknown): value is DocumentToFrameMessage {
+  if (!isRecord(value)) {
+    return false;
+  }
+  switch (value.type) {
+    case "document-ready":
+      return typeof value.search === "string";
+    case "resource-request":
+      return typeof value.id === "string" && typeof value.documentPath === "string" && typeof value.reference === "string";
+    case "navigate":
+      return typeof value.documentPath === "string" && typeof value.reference === "string";
+    case "storage-write":
+      return typeof value.key === "string" && typeof value.value === "string";
+    default:
+      return false;
+  }
+}

@@ -1,88 +1,126 @@
 import * as SDK from "azure-devops-extension-sdk";
-import { listBuildReports, type BuildReport, type DownloadProgress } from "./ado";
+import { createAdoReportSource } from "./ado";
 import { isFrameToTabMessage, type ReportDescriptor } from "./protocol";
+import type { BuildReport, DownloadProgress, ReportList, ReportSource } from "./reports";
 import "./styles.css";
 
 const MAX_CACHED_REPORTS = 3;
 const MAX_PERSISTED_STORAGE_BYTES = 16 * 1024;
 const PERSISTED_STORAGE_KEYS = new Set(["theme", "filters"]);
+// onBuildChanged is the primary refresh signal; polling covers attachments added without one.
+const IN_PROGRESS_POLL_MS = 30_000;
 const app = document.querySelector<HTMLElement>("#app");
 const reportCache = new Map<string, Blob>();
 let reportFrame: HTMLIFrameElement | undefined;
-let activeReportId: string | undefined;
 let activeReport: BuildReport | undefined;
+let renderedReportIds = "";
 let loadSequence = 0;
+let refreshSequence = 0;
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
 void initialize();
 
 async function initialize(): Promise<void> {
-  if (window.parent === window) {
-    renderHarness();
+  let source: ReportSource | undefined;
+  try {
+    if (window.parent === window) {
+      source =
+        import.meta.env.DEV || import.meta.env.VITE_REPORT_HARNESS === "1"
+          ? await import("./harness").then(({ createHarnessReportSource }) => createHarnessReportSource())
+          : undefined;
+      if (!source) {
+        renderFilePicker();
+        return;
+      }
+    } else {
+      await SDK.init({ applyTheme: true, loaded: false });
+      // Notify early so the host never shows its spinner while reports download.
+      SDK.notifyLoadSucceeded();
+      source = await createAdoReportSource();
+    }
+  } catch (error) {
+    renderMessage(error instanceof Error ? error.message : "Unable to load reports for this run.", "error");
     return;
   }
+  const reportSource = source;
+  reportSource.onChange(() => void refresh(reportSource));
+  await refresh(reportSource);
+}
+
+async function refresh(source: ReportSource): Promise<void> {
+  const sequence = ++refreshSequence;
+  clearTimeout(pollTimer);
+  let list: ReportList;
   try {
-    await SDK.init({ applyTheme: true, loaded: false });
-    SDK.notifyLoadSucceeded();
-    const reports = await listBuildReports();
-    renderHostedReports(reports);
+    list = await source.load();
   } catch (error) {
-    renderHostError(error);
+    if (sequence === refreshSequence) {
+      renderMessage(error instanceof Error ? error.message : "Unable to load reports for this run.", "error");
+    }
+    return;
+  }
+  if (sequence !== refreshSequence) {
+    return;
+  }
+  renderReports(list);
+  if (list.inProgress) {
+    pollTimer = setTimeout(() => void refresh(source), IN_PROGRESS_POLL_MS);
   }
 }
 
-function renderHostedReports(reports: readonly BuildReport[]): void {
+function renderReports(list: ReportList): void {
   if (!app) {
     return;
   }
-  if (reports.length === 0) {
-    app.textContent = "No HTML reports are attached to this run. Use publish-html-report.yml to attach one.";
+  if (list.reports.length === 0) {
+    renderMessage(
+      list.inProgress
+        ? "This run is still in progress. Reports appear here once they are attached."
+        : "No HTML reports are attached to this run. Use pipeline-templates/publish-html-report.yml to attach one.",
+      list.inProgress ? "in-progress" : "empty",
+    );
     return;
   }
 
+  const shell = ensureShell();
+  const note = shell.querySelector<HTMLElement>(".run-note");
+  if (note) {
+    note.hidden = !list.inProgress;
+  }
+
+  // Refreshes that return the same reports keep the toolbar and the open report untouched.
+  const ids = list.reports.map((report) => `${report.id}\u0000${report.displayName}`).join("\u0001");
+  if (ids === renderedReportIds) {
+    return;
+  }
+  renderedReportIds = ids;
+
+  const remembered = readSelection(list.pipelineKey);
+  const selected =
+    list.reports.find((report) => report.id === activeReport?.id) ??
+    list.reports.find((report) => report.displayName === remembered) ??
+    list.reports[0];
+  renderSwitcher(shell, list, selected);
+  if (selected.id !== activeReport?.id || !reportFrame) {
+    void downloadAndOpen(selected);
+  }
+}
+
+function ensureShell(): HTMLElement {
+  const existing = app?.querySelector<HTMLElement>(".report-shell");
+  if (existing || !app) {
+    return existing as HTMLElement;
+  }
   const shell = document.createElement("section");
   shell.className = "report-shell";
   const toolbar = document.createElement("header");
   toolbar.className = "report-toolbar";
-  const selectReport = (report: BuildReport): void => {
-    activeReport = report;
-    void downloadAndOpen(report);
-  };
-
-  if (reports.length <= 4) {
-    const switcher = document.createElement("div");
-    switcher.className = "report-switcher";
-    switcher.setAttribute("role", "group");
-    switcher.setAttribute("aria-label", "Select report");
-    for (const report of reports) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = report.displayName;
-      button.className = "report-choice";
-      button.addEventListener("click", () => {
-        for (const choice of switcher.querySelectorAll<HTMLButtonElement>("button")) {
-          choice.classList.toggle("is-active", choice === button);
-        }
-        selectReport(report);
-      });
-      switcher.append(button);
-    }
-    switcher.firstElementChild?.classList.add("is-active");
-    toolbar.append(switcher);
-  } else {
-    const selector = document.createElement("select");
-    selector.setAttribute("aria-label", "Select report");
-    for (const report of reports) {
-      selector.add(new Option(report.displayName, report.id));
-    }
-    selector.addEventListener("change", () => {
-      const selected = reports.find((report) => report.id === selector.value);
-      if (selected) {
-        selectReport(selected);
-      }
-    });
-    toolbar.append(selector);
-  }
-
+  const choices = document.createElement("div");
+  choices.className = "report-choices";
+  const note = document.createElement("span");
+  note.className = "run-note";
+  note.textContent = "Run in progress: more reports may appear.";
+  note.hidden = true;
   const download = document.createElement("button");
   download.type = "button";
   download.className = "download-report";
@@ -92,17 +130,69 @@ function renderHostedReports(reports: readonly BuildReport[]): void {
       void downloadArchive(activeReport);
     }
   });
-  toolbar.append(download);
+  toolbar.append(choices, note, download);
   shell.append(toolbar);
   app.replaceChildren(shell);
-  selectReport(reports[0]);
+  return shell;
+}
+
+function renderSwitcher(shell: HTMLElement, list: ReportList, selected: BuildReport): void {
+  const choices = shell.querySelector<HTMLElement>(".report-choices");
+  if (!choices) {
+    return;
+  }
+  const choose = (report: BuildReport): void => {
+    writeSelection(list.pipelineKey, report.displayName);
+    void downloadAndOpen(report);
+  };
+
+  if (list.reports.length <= 4) {
+    const switcher = document.createElement("div");
+    switcher.className = "report-switcher";
+    switcher.setAttribute("role", "group");
+    switcher.setAttribute("aria-label", "Select report");
+    for (const report of list.reports) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = report.displayName;
+      button.title = report.displayName;
+      button.className = "report-choice";
+      button.classList.toggle("is-active", report.id === selected.id);
+      button.setAttribute("aria-pressed", String(report.id === selected.id));
+      button.addEventListener("click", () => {
+        for (const choice of switcher.querySelectorAll<HTMLButtonElement>("button")) {
+          choice.classList.toggle("is-active", choice === button);
+          choice.setAttribute("aria-pressed", String(choice === button));
+        }
+        choose(report);
+      });
+      switcher.append(button);
+    }
+    choices.replaceChildren(switcher);
+    return;
+  }
+
+  const selector = document.createElement("select");
+  selector.setAttribute("aria-label", "Select report");
+  for (const report of list.reports) {
+    selector.add(new Option(report.displayName, report.id, false, report.id === selected.id));
+  }
+  selector.addEventListener("change", () => {
+    const report = list.reports.find((candidate) => candidate.id === selector.value);
+    if (report) {
+      choose(report);
+    }
+  });
+  choices.replaceChildren(selector);
 }
 
 async function downloadAndOpen(report: BuildReport): Promise<void> {
   const sequence = ++loadSequence;
+  activeReport = report;
   showStatus(`Loading ${report.displayName}...`);
   try {
-    const archive = reportCache.get(report.id) ?? (await report.download((progress) => showDownloadProgress(report.displayName, progress, sequence)));
+    const archive =
+      reportCache.get(report.id) ?? (await report.download((progress) => showDownloadProgress(report.displayName, progress, sequence)));
     if (sequence === loadSequence) {
       openReport(report, archive);
       showStatus("");
@@ -150,7 +240,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function renderHarness(): void {
+/** Local fallback without fixtures: open any report ZIP from disk. */
+function renderFilePicker(): void {
   if (!app) {
     return;
   }
@@ -165,7 +256,14 @@ function renderHarness(): void {
   picker.addEventListener("change", () => {
     const archive = picker.files?.item(0);
     if (archive) {
-      openReport({ id: archive.name, displayName: archive.name, entryPath: "index.html" }, archive);
+      activeReport = {
+        id: archive.name,
+        displayName: archive.name,
+        entryPath: "index.html",
+        storageScope: archive.name,
+        download: async () => archive,
+      };
+      openReport(activeReport, archive);
     }
   });
   toolbar.append(picker);
@@ -173,28 +271,41 @@ function renderHarness(): void {
   app.replaceChildren(shell);
 }
 
-function renderHostError(error: unknown): void {
-  if (app) {
-    app.textContent = error instanceof Error ? error.message : "Unable to load reports for this build.";
-  }
-}
-
-function openReport(report: ReportDescriptor, archive: Blob): void {
+function renderMessage(text: string, kind: "empty" | "error" | "in-progress"): void {
   if (!app) {
     return;
   }
+  reportFrame = undefined;
+  activeReport = undefined;
+  renderedReportIds = "";
+  const message = document.createElement("p");
+  message.className = `tab-message is-${kind}`;
+  if (kind === "error") {
+    message.setAttribute("role", "alert");
+  }
+  message.textContent = text;
+  app.replaceChildren(message);
+}
+
+function openReport(report: BuildReport, archive: Blob): void {
+  const shell = app?.querySelector(".report-shell");
+  if (!shell) {
+    return;
+  }
   remember(report.id, archive);
-  activeReportId = report.id;
   reportFrame?.remove();
   reportFrame = document.createElement("iframe");
   reportFrame.className = "report-frame";
   reportFrame.title = report.displayName;
-  reportFrame.src = new URL("./frame.html", import.meta.url).toString();
+  reportFrame.src = new URL("frame.html", document.baseURI).href;
+  // Send only cloneable descriptor fields; a BuildReport also carries its download function.
+  const descriptor: ReportDescriptor = { id: report.id, displayName: report.displayName, entryPath: report.entryPath };
+  const storage = readPersistedStorage(report.storageScope);
   reportFrame.addEventListener("load", () => {
-    reportFrame?.contentWindow?.postMessage({ type: "load-report", report, archive, storage: readPersistedStorage(report.id) }, "*");
+    reportFrame?.contentWindow?.postMessage({ type: "load-report", report: descriptor, archive, storage }, "*");
   });
   reportFrame.addEventListener("error", () => showStatus("Unable to load the report frame."));
-  app.querySelector(".report-shell")?.append(reportFrame);
+  shell.append(reportFrame);
 }
 
 window.addEventListener("message", (event) => {
@@ -202,18 +313,12 @@ window.addEventListener("message", (event) => {
     return;
   }
   if (event.data.type === "frame-status") {
-    showStatus(event.data.status === "error" ? event.data.detail ?? "Unable to render report." : "");
+    showStatus(event.data.status === "error" ? (event.data.detail ?? "Unable to render report.") : "");
   }
-  if (event.data.type === "storage-write" && PERSISTED_STORAGE_KEYS.has(event.data.key)) {
+  if (event.data.type === "storage-write" && PERSISTED_STORAGE_KEYS.has(event.data.key) && activeReport) {
     const value = event.data.value;
     if (new TextEncoder().encode(value).byteLength <= MAX_PERSISTED_STORAGE_BYTES) {
-      try {
-        if (activeReportId) {
-          localStorage.setItem(storageKey(activeReportId, event.data.key), value);
-        }
-      } catch {
-        // Storage is an optional convenience and must not break report rendering.
-      }
+      safeStorage(() => localStorage.setItem(storageKey(activeReport?.storageScope ?? "", event.data.key), value));
     }
   }
 });
@@ -229,23 +334,40 @@ function remember(id: string, archive: Blob): void {
   }
 }
 
-function readPersistedStorage(reportId: string): Record<string, string> {
+function readPersistedStorage(scope: string): Record<string, string> {
   const storage: Record<string, string> = {};
-  try {
+  safeStorage(() => {
     for (const key of PERSISTED_STORAGE_KEYS) {
-      const value = localStorage.getItem(storageKey(reportId, key));
+      const value = localStorage.getItem(storageKey(scope, key));
       if (value && new TextEncoder().encode(value).byteLength <= MAX_PERSISTED_STORAGE_BYTES) {
         storage[key] = value;
       }
     }
-  } catch {
-    // Storage is an optional convenience and must not break report rendering.
-  }
+  });
   return storage;
 }
 
-function storageKey(reportId: string, key: string): string {
-  return `html-report:${reportId}:${key}`;
+function storageKey(scope: string, key: string): string {
+  return `html-report:${scope}:${key}`;
+}
+
+function readSelection(pipelineKey: string | undefined): string | undefined {
+  return pipelineKey ? (safeStorage(() => localStorage.getItem(`html-report-selection:${pipelineKey}`)) ?? undefined) : undefined;
+}
+
+function writeSelection(pipelineKey: string | undefined, displayName: string): void {
+  if (pipelineKey) {
+    safeStorage(() => localStorage.setItem(`html-report-selection:${pipelineKey}`, displayName));
+  }
+}
+
+/** Storage is an optional convenience; failures (quota, disabled storage) must not break the tab. */
+function safeStorage<T>(action: () => T): T | undefined {
+  try {
+    return action();
+  } catch {
+    return undefined;
+  }
 }
 
 function showStatus(message: string): void {
@@ -257,6 +379,7 @@ function showStatus(message: string): void {
   if (message && app) {
     const status = document.createElement("p");
     status.role = "status";
+    status.className = "tab-status";
     status.textContent = message;
     app.prepend(status);
   }

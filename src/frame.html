@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Report renderer</title>
+    <style>
+      html,
+      body,
+      #report-root {
+        height: 100%;
+        margin: 0;
+      }
+      #report-root > iframe {
+        border: 0;
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
   </head>
   <body>
     <main id="report-root">Waiting for a report archive.</main>

@@ -1,35 +1,41 @@
 import { resolveArchivePath } from "./paths";
 
 export interface ResourceResolver {
+  /** Returns the URL to substitute for an archive path. */
   resourceUrl(path: string): Promise<string>;
 }
 
-const URL_PATTERN = /url\(\s*(['"]?)(.*?)\1\s*\)/giu;
-const IMPORT_PATTERN = /@import\s+(?:url\(\s*)?(['"])(.*?)\1\s*\)?/giu;
+// `@import "a.css"` (string form) or any `url(...)`, including `@import url(...)`.
+const REFERENCE_PATTERN = /@import\s+(['"])(.*?)\1|url\(\s*(['"]?)(.*?)\3\s*\)/giu;
 
-export async function rewriteCss(css: string, documentPath: string, resolver: ResourceResolver): Promise<string> {
-  const imports = await replaceAsync(css, IMPORT_PATTERN, async (match, _quote: string, reference: string) => {
-    const path = resolveArchivePath(documentPath, reference);
-    return path ? `@import url("${await resolver.resourceUrl(path)}")` : match;
-  });
+/**
+ * Rewrites archive-local `url()` and `@import` references in a stylesheet. References resolve
+ * relative to `stylesheetPath` (the CSS file, or the document for inline styles), not the page.
+ */
+export async function rewriteCss(css: string, stylesheetPath: string, resolver: ResourceResolver): Promise<string> {
+  const matches = [...css.matchAll(REFERENCE_PATTERN)];
+  const replacements = await Promise.all(
+    matches.map(async (match) => {
+      const isImport = match[2] !== undefined;
+      const reference = (isImport ? match[2] : match[4]).trim();
+      const path = resolveArchivePath(stylesheetPath, reference);
+      if (!path) {
+        return match[0];
+      }
+      const url = cssString(await resolver.resourceUrl(path));
+      return isImport ? `@import url(${url})` : `url(${url})`;
+    }),
+  );
 
-  return replaceAsync(imports, URL_PATTERN, async (match, _quote: string, reference: string) => {
-    const path = resolveArchivePath(documentPath, reference);
-    return path ? `url("${await resolver.resourceUrl(path)}")` : match;
-  });
-}
-
-async function replaceAsync(
-  source: string,
-  expression: RegExp,
-  replacement: (match: string, ...groups: string[]) => Promise<string>,
-): Promise<string> {
-  const matches = [...source.matchAll(expression)];
-  const replacements = await Promise.all(matches.map((match) => replacement(match[0], ...match.slice(1))));
-  let result = source;
+  let result = css;
   for (let index = matches.length - 1; index >= 0; index -= 1) {
     const match = matches[index];
-    result = `${result.slice(0, match.index)}${replacements[index]}${result.slice((match.index ?? 0) + match[0].length)}`;
+    const start = match.index ?? 0;
+    result = `${result.slice(0, start)}${replacements[index]}${result.slice(start + match[0].length)}`;
   }
   return result;
+}
+
+function cssString(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\a ")}"`;
 }
