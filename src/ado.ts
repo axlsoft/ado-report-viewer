@@ -73,7 +73,7 @@ export async function createAdoReportSource(): Promise<ReportSource> {
   }
   const projectId = context.project.id;
   const locationService = await SDK.getService<LocationService>("ms.vss-web.location-service");
-  const baseUrl = await locationService.getResourceAreaLocation(BUILD_RESOURCE_AREA_ID);
+  const baseUrl = (await locationService?.getResourceAreaLocation(BUILD_RESOURCE_AREA_ID)) ?? hostedCollectionUrl();
   if (!baseUrl) {
     throw new Error("The Azure DevOps Build service location is unavailable.");
   }
@@ -179,6 +179,11 @@ async function buildIdFromPageData(): Promise<number | undefined> {
 function validBuildId(value: unknown): number | undefined {
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
+
+function hostedCollectionUrl(): string | undefined {
+  const host = SDK.getHost();
+  return host.isHosted && host.name ? `https://dev.azure.com/${encodeURIComponent(host.name)}` : undefined;
 }
 
 function delay(milliseconds: number): Promise<void> {
