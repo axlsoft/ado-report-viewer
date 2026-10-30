@@ -94,3 +94,7 @@ Report archives can contain arbitrary HTML and JavaScript, so each report runs i
 ## Contributing
 
 To build, test, or release the extension, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) © axlsoft, LLC. Third-party notices for bundled code ship with the extension in `THIRD-PARTY-NOTICES.txt`.

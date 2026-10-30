@@ -71,7 +71,7 @@ The publisher identity is never committed: `vss-extension.json` has no `publishe
 | `AZURE_DEVOPS_EXT_PAT` | `npm run publish` | PAT with the Marketplace (publish) scope |
 | `EXTENSION_VERSION` | optional | Overrides the `package.json` version (set by the release workflow) |
 
-`npm run package` writes the VSIX to `release/`; `npm run verify:vsix` checks that it contains no sources or source maps. `npm run publish` packages, then publishes and shares the extension.
+The build writes `dist/THIRD-PARTY-NOTICES.txt` from the license files of the runtime `dependencies`, which are the only packages bundled into the extension. `npm run package` writes the VSIX to `release/`; `npm run verify:vsix` checks that it contains no sources or source maps. `npm run publish` packages, then publishes and shares the extension.
 
 ## Continuous Delivery
 
