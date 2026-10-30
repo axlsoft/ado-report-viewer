@@ -6,6 +6,11 @@
   "icons": {
     "default": "images/icon.png"
   },
+  "content": {
+    "license": {
+      "path": "LICENSE"
+    }
+  },
   "public": false,
   "categories": [
     "Azure Pipelines"
