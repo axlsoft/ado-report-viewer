@@ -8,20 +8,22 @@ import { ZipArchive } from "./zip";
 const root = document.querySelector<HTMLElement>("#report-root");
 let activeArchive: ZipArchive | undefined;
 let activeReport: ReportDescriptor | undefined;
+let activeStorage: Record<string, string> = {};
 let childFrame: HTMLIFrameElement | undefined;
 const objectUrls = new Set<string>();
 
 window.addEventListener("message", (event) => {
   if (event.source === window.parent && isLoadReportMessage(event.data)) {
-    void loadReport(event.data.report, event.data.archive);
+    void loadReport(event.data.report, event.data.archive, event.data.storage ?? {});
   }
 });
 
 postToOpaqueWindow(window.parent, { type: "frame-status", status: "ready" satisfies FrameStatusMessage["status"] });
 
-async function loadReport(report: ReportDescriptor, archiveBlob: Blob): Promise<void> {
+async function loadReport(report: ReportDescriptor, archiveBlob: Blob, storage: Record<string, string>): Promise<void> {
   cleanup();
   activeReport = report;
+  activeStorage = storage;
   activeArchive = await ZipArchive.open(archiveBlob);
   await renderDocument(report.entryPath);
 }
@@ -34,14 +36,12 @@ async function renderDocument(path: string): Promise<void> {
   try {
     const source = await activeArchive.read(path);
     const html = await source.text();
-    const resolver: ResourceResolver = {
-      resourceUrl: (resourcePath) => resourceUrl(resourcePath),
-    };
+    const resolver: ResourceResolver = { resourceUrl: (resourcePath) => resourceUrl(resourcePath) };
     const rewritten = await rewriteHtml(html, path, resolver);
     const frame = document.createElement("iframe");
     frame.title = activeReport.displayName;
     frame.sandbox.add("allow-scripts", "allow-downloads", "allow-popups");
-    frame.srcdoc = injectRuntime(rewritten, path);
+    frame.srcdoc = injectRuntime(rewritten, path, activeStorage);
     frame.addEventListener("load", () => {
       if (frame.contentWindow) {
         postToOpaqueWindow(frame.contentWindow, { type: "rendered" });
@@ -70,8 +70,12 @@ async function resourceUrl(path: string): Promise<string> {
   return url;
 }
 
-function injectRuntime(html: string, documentPath: string): string {
-  return html.replace(/<head([^>]*)>/iu, `<head$1>${runtimeShim(documentPath)}`);
+function injectRuntime(html: string, documentPath: string, storage: Record<string, string>): string {
+  const shim = runtimeShim(documentPath, storage);
+  if (/<head[^>]*>/iu.test(html)) {
+    return html.replace(/<head([^>]*)>/iu, `<head$1>${shim}`);
+  }
+  return `${shim}${html}`;
 }
 
 window.addEventListener("message", (event) => {
@@ -111,8 +115,7 @@ async function respondWithResource(
     if (!path) {
       throw new Error("External URLs are not served from the report archive");
     }
-    const url = await resourceUrl(path);
-    messageChild(target, { type: "resource-response", id, url });
+    messageChild(target, { type: "resource-response", id, blob: await activeArchive.read(path) });
   } catch (error) {
     messageChild(target, { type: "resource-response", id, error: error instanceof Error ? error.message : "Missing report resource" });
   }
@@ -124,13 +127,13 @@ function messageChild(target: WindowProxy, message: unknown): void {
 
 function postToOpaqueWindow(target: WindowProxy, message: unknown): void {
   // The receiving sandbox has opaque origin "null"; the browser requires wildcard delivery.
-  // @ts-expect-error TypeScript 7's WindowProxy declaration rejects the standard string overload.
   target.postMessage(message, "*");
 }
 
 function cleanup(): void {
   childFrame?.remove();
   childFrame = undefined;
+  activeStorage = {};
   for (const url of objectUrls) {
     URL.revokeObjectURL(url);
   }

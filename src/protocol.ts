@@ -8,6 +8,7 @@ export interface LoadReportMessage {
   type: "load-report";
   report: ReportDescriptor;
   archive: Blob;
+  storage?: Record<string, string>;
 }
 
 export interface FrameStatusMessage {
@@ -38,7 +39,8 @@ export function isLoadReportMessage(value: unknown): value is LoadReportMessage 
     value.archive instanceof Blob &&
     typeof value.report.id === "string" &&
     typeof value.report.displayName === "string" &&
-    typeof value.report.entryPath === "string"
+    typeof value.report.entryPath === "string" &&
+    (value.storage === undefined || isStringRecord(value.storage))
   );
 }
 
@@ -60,4 +62,8 @@ export function isFrameToTabMessage(value: unknown): value is FrameToTabMessage 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }

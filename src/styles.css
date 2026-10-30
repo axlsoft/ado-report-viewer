@@ -29,6 +29,39 @@ body {
   padding: 8px 12px;
 }
 
+.report-switcher {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.report-choice,
+.download-report {
+  background: var(--button-secondary-background, #fff);
+  border: 1px solid var(--button-secondary-border, #8c959f);
+  border-radius: 4px;
+  color: inherit;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.report-choice {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-choice.is-active {
+  background: var(--communication-background, #0078d4);
+  border-color: var(--communication-background, #0078d4);
+  color: var(--text-on-communication-background, #fff);
+}
+
+.download-report {
+  margin-left: auto;
+}
+
 .report-frame {
   border: 0;
   height: 100%;

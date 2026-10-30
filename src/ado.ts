@@ -18,7 +18,12 @@ interface AttachmentListResponse {
 }
 
 export interface BuildReport extends ReportDescriptor {
-  download(): Promise<Blob>;
+  download(onProgress?: (progress: DownloadProgress) => void): Promise<Blob>;
+}
+
+export interface DownloadProgress {
+  loaded: number;
+  total?: number;
 }
 
 export async function listBuildReports(): Promise<BuildReport[]> {
@@ -63,14 +68,51 @@ export async function listBuildReports(): Promise<BuildReport[]> {
   });
 }
 
-async function downloadAttachment(endpoint: string, name: string, token: string): Promise<Blob> {
+async function downloadAttachment(
+  endpoint: string,
+  name: string,
+  token: string,
+  onProgress?: (progress: DownloadProgress) => void,
+): Promise<Blob> {
   const response = await fetch(`${endpoint}/${encodeURIComponent(name)}?api-version=${API_VERSION}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
     throw new Error(`Unable to download report archive (HTTP ${response.status}).`);
   }
-  return response.blob();
+  if (!response.body) {
+    const archive = await response.blob();
+    onProgress?.({ loaded: archive.size, total: archive.size });
+    return archive;
+  }
+
+  const totalHeader = response.headers.get("content-length");
+  const total = totalHeader && /^\d+$/u.test(totalHeader) ? Number(totalHeader) : undefined;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let loaded = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = new Uint8Array(value);
+      chunks.push(chunk);
+      loaded += chunk.byteLength;
+      onProgress?.({ loaded, total });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new Blob([bytes], { type: response.headers.get("content-type") ?? "application/zip" });
 }
 
 function decodeAttachmentName(name: string): { entryPath: string; name: string } | undefined {
