@@ -26,18 +26,18 @@
     "azure-devops-extension-sdk": "5.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
-    "allure": "3.22.1",
+    "allure": "3.33.0",
     "allure-playwright": "3.14.0",
     "nyc": "18.0.0",
-    "oxlint": "1.90.0",
+    "oxlint": "1.91.0",
     "prettier": "3.9.10",
-    "reporting-labs": "0.6.22",
+    "reporting-labs": "0.6.24",
     "tfx-cli": "0.24.2",
     "typescript": "7.0.2",
-    "vite": "8.3.5",
-    "vitest": "5.0.5"
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
   },
   "overrides": {
     "dompurify": "3.4.17"
