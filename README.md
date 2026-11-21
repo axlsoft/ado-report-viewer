@@ -19,46 +19,52 @@ The extension adds a **Reports** tab to the pipeline run page. Any pipeline step
 The extension is private. It has to be shared with your Azure DevOps organization before it can be installed.
 
 1. Once it has been shared, an organization administrator installs it from **Organization settings → Extensions → Shared**.
-2. Add the report template to the pipelines that produce reports (see [Attach a Report](#attach-a-report)).
+2. Add the **Publish HTML report** task to the pipelines that produce reports (see [Attach a Report](#attach-a-report)).
 3. Open a pipeline run and select the **Reports** tab.
 
 ## Attach a Report
 
-Copy [`pipeline-templates/publish-html-report.yml`](pipeline-templates/publish-html-report.yml) into the repository whose pipeline produces the report. Then add it as a step after the step that writes the report:
+The extension adds a **Publish HTML report** task (`PublishHtmlReport@1`). Add it after the step that writes the report:
 
 ```yaml
 steps:
   - script: npx playwright test
     displayName: Run tests
 
-  - template: pipeline-templates/publish-html-report.yml
-    parameters:
+  - task: PublishHtmlReport@1
+    condition: succeededOrFailed()
+    inputs:
       reportDir: playwright-report
       name: Playwright
 ```
 
-The template zips the folder and attaches it to the run. It runs even when earlier steps fail, so failing runs still have their reports.
+The task zips the folder and attaches it to the run. `condition: succeededOrFailed()` keeps it running when earlier steps fail, so failing runs still have their reports. In the classic editor, find the task under **Utility**.
 
-| Parameter | Required | Description |
+| Input | Required | Description |
 | --- | --- | --- |
-| `reportDir` | Yes | Folder that contains the report, such as `playwright-report` or `coverage/lcov-report`. |
+| `reportDir` | Yes | Folder that contains the report, such as `playwright-report` or `coverage/lcov-report`. Relative paths start at the default working directory. |
 | `name` | Yes | Name shown in the Reports tab. Use a different name for each report attached by the same job. |
 | `entry` | No | Page to open first, relative to `reportDir`. Defaults to `index.html`. |
+| `ifMissing` | No | What to do when the folder doesn't exist or is empty: `warn` (default), `error`, or `ignore`. |
 
 Attach as many reports as you like, from any stage or job:
 
 ```yaml
-- template: pipeline-templates/publish-html-report.yml
-  parameters:
+- task: PublishHtmlReport@1
+  condition: succeededOrFailed()
+  inputs:
     reportDir: coverage/lcov-report
     name: Coverage
 
-- template: pipeline-templates/publish-html-report.yml
-  parameters:
+- task: PublishHtmlReport@1
+  condition: succeededOrFailed()
+  inputs:
     reportDir: reports/e2e
     name: E2E
     entry: summary.html
 ```
+
+The task fails, rather than attaching a report the tab can't open, when the report exceeds the [archive limits](#limitations).
 
 If the entry page is missing from the archive, the tab opens `index.html`. If that's missing too, it opens the only HTML page at the top of the archive, or asks you to choose when there are several.
 
