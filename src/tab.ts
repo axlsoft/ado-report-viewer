@@ -78,7 +78,7 @@ function renderReports(list: ReportList): void {
     renderMessage(
       list.inProgress
         ? "This run is still in progress. Reports appear here once they are attached."
-        : "No HTML reports are attached to this run. Use pipeline-templates/publish-html-report.yml to attach one.",
+        : "No HTML reports are attached to this run. Add the PublishHtmlReport@1 task to the pipeline to attach one.",
       list.inProgress ? "in-progress" : "empty",
     );
     return;

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
+  "id": "844a46b0-28ae-4600-a81a-70cc83ed7de0",
+  "name": "PublishHtmlReport",
+  "friendlyName": "Publish HTML report",
+  "description": "Attach a static HTML report folder to the run, for the Reports tab.",
+  "helpMarkDown": "Zips the report folder and attaches it to the pipeline run. Open the run's **Reports** tab to view it.",
+  "category": "Utility",
+  "author": "axlsoft, LLC",
+  "version": {
+    "Major": 1,
+    "Minor": 0,
+    "Patch": 0
+  },
+  "minimumAgentVersion": "3.232.1",
+  "instanceNameFormat": "Publish $(name) HTML report",
+  "inputs": [
+    {
+      "name": "reportDir",
+      "type": "filePath",
+      "label": "Report folder",
+      "required": true,
+      "helpMarkDown": "Folder that contains the report, such as `playwright-report` or `coverage/lcov-report`. Relative paths are resolved from the default working directory."
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "label": "Report name",
+      "required": true,
+      "helpMarkDown": "Name shown in the Reports tab. Use a different name for each report attached by the same job."
+    },
+    {
+      "name": "entry",
+      "type": "string",
+      "label": "Entry page",
+      "defaultValue": "index.html",
+      "required": false,
+      "helpMarkDown": "Page to open first, relative to the report folder."
+    },
+    {
+      "name": "ifMissing",
+      "type": "pickList",
+      "label": "If the report folder is missing",
+      "defaultValue": "warn",
+      "required": false,
+      "options": {
+        "warn": "Warn",
+        "error": "Fail the task",
+        "ignore": "Do nothing"
+      },
+      "helpMarkDown": "What to do when the report folder doesn't exist or has no files, for example because an earlier step failed before writing it."
+    }
+  ],
+  "execution": {
+    "Node20_1": {
+      "target": "index.js",
+      "argumentFormat": ""
+    },
+    "Node24": {
+      "target": "index.js",
+      "argumentFormat": ""
+    }
+  }
+}

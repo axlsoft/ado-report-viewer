@@ -7,5 +7,5 @@
     "strict": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src", "scripts", "test", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "task", "scripts", "test", "vite.config.ts", "playwright.config.ts"]
 }

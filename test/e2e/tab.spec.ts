@@ -50,10 +50,10 @@ test("an in-progress run shows its reports and picks up new ones without reloadi
   expect(await frame.evaluate(() => (window as { untouched?: boolean }).untouched)).toBe(true);
 });
 
-test("a run without reports points to the pipeline template", async ({ page }) => {
+test("a run without reports points to the pipeline task", async ({ page }) => {
   await page.goto("/tab.html?scenario=empty");
   await expect(page.getByText("No HTML reports are attached to this run.")).toBeVisible();
-  await expect(page.getByText("publish-html-report.yml")).toBeVisible();
+  await expect(page.getByText("PublishHtmlReport@1")).toBeVisible();
 });
 
 test("duplicate report names are labeled by job, and the selection is remembered per pipeline", async ({ page }) => {

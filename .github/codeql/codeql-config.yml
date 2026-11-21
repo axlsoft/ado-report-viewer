@@ -8,6 +8,7 @@ queries:
 paths-ignore:
   - node_modules
   - dist
+  - dist-task
   - .harness-dist
   - release
   - playwright-report

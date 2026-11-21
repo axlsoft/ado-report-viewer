@@ -19,7 +19,8 @@ npx playwright install --with-deps
 | `npm run fixtures` | Generate fixture report archives from the real reporters (see below). |
 | `npm run harness` | Production build served with the fixture harness, on `http://127.0.0.1:4173/tab.html`. |
 | `npm run lint` | oxlint |
-| `npm run build` | Type check, bundle, and enforce bundle size budgets. |
+| `npm run build` | Type check, bundle the tab and the pipeline task, and enforce bundle size budgets. |
+| `npm run build:task` | Bundle only the pipeline task into `dist-task/PublishHtmlReport`. |
 | `npm test` | Unit tests (Vitest). |
 | `npm run test:e2e` | Generate fixtures, then run the browser tests against the harness in Chromium, Firefox, and WebKit. |
 
@@ -29,7 +30,7 @@ The harness simulates run states with `?scenario=`: `in-progress`, `empty`, and 
 
 ```mermaid
 flowchart LR
-  A[Pipeline report folder] --> B[ArchiveFiles ZIP]
+  A[Pipeline report folder] --> B[PublishHtmlReport task ZIP]
   B --> C[Build attachment]
   C --> D[Reports tab]
   D -->|Blob postMessage| E[Sandboxed report frame]
@@ -38,6 +39,12 @@ flowchart LR
 ```
 
 The host tab owns the Azure DevOps access token and only sends the chosen report Blob to the opaque-origin frame. The report frame resolves report-local resources from that Blob; it never receives a token and cannot request host-side fetches or downloads. Each report page runs in an opaque-origin sandbox at the extension's `report-document.html` URL, under a Content-Security-Policy that only allows `blob:` and `data:` resources.
+
+### Pipeline Task
+
+`task/` holds the `PublishHtmlReport@1` pipeline task: `task/task.json` is its manifest, and `task/src/` its source. It has no dependencies. It reads inputs from the `INPUT_<NAME>` environment variables the agent sets, writes the ZIP with its own writer (`task/src/zip-writer.ts`, checked in `test/unit/task.test.ts` against the tab's ZIP reader and `unzip`), and attaches it with the `task.addattachment` logging command.
+
+`npm run build:task` bundles it into a single CommonJS `index.js` (Node 20 syntax, for the `Node20_1` and `Node24` handlers) in `dist-task/PublishHtmlReport`, with the manifest and icon. Agents cache tasks by version, so the build stamps the task version from the extension version: `Major` stays as in `task/task.json`, `Minor` is `major * 1000 + minor`, and `Patch` is `patch`. A breaking change to the task's inputs needs a new task major in its own folder, not a bump of `Major`.
 
 ### Compatibility Fixtures
 
@@ -71,7 +78,7 @@ The publisher identity is never committed: `vss-extension.json` has no `publishe
 | `AZURE_DEVOPS_EXT_PAT` | `npm run publish` | PAT with the Marketplace (publish) scope |
 | `EXTENSION_VERSION` | optional | Overrides the `package.json` version (set by the release workflow) |
 
-The build writes `dist/THIRD-PARTY-NOTICES.txt` from the license files of the runtime `dependencies`, which are the only packages bundled into the extension. `npm run package` writes the VSIX to `release/`; `npm run verify:vsix` checks that it contains no sources or source maps. `npm run publish` packages, then publishes and shares the extension.
+The build writes `dist/THIRD-PARTY-NOTICES.txt` from the license files of the runtime `dependencies`, which are the only packages bundled into the extension. `npm run package` writes the VSIX to `release/`; `npm run verify:vsix` checks that it contains no sources or source maps, and that it contains the pipeline task. `npm run publish` packages, then publishes and shares the extension.
 
 ## Continuous Delivery
 

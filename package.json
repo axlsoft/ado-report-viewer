@@ -9,7 +9,8 @@
     "node": ">=26"
   },
   "scripts": {
-    "build": "npm run typecheck && vite build && npm run size",
+    "build": "npm run typecheck && vite build && npm run build:task && npm run size",
+    "build:task": "node scripts/build-task.ts",
     "dev": "vite --host 127.0.0.1",
     "fixtures": "node test/fixtures/generate.ts",
     "package": "npm run build && node --env-file-if-exists=.env scripts/extension.ts create",
@@ -20,7 +21,7 @@
     "typecheck": "tsc --noEmit",
     "verify:vsix": "node scripts/verify-vsix.ts",
     "harness": "VITE_REPORT_HARNESS=1 vite build --outDir ../.harness-dist --emptyOutDir && vite preview --outDir ../.harness-dist --host 127.0.0.1 --port 4173 --strictPort",
-    "lint": "oxlint src test scripts"
+    "lint": "oxlint src task test scripts"
   },
   "dependencies": {
     "azure-devops-extension-sdk": "5.0.0"

@@ -34,6 +34,16 @@
         "name": "Reports",
         "uri": "dist/tab.html"
       }
+    },
+    {
+      "id": "publish-html-report-task",
+      "type": "ms.vss-distributed-task.task",
+      "targets": [
+        "ms.vss-distributed-task.tasks"
+      ],
+      "properties": {
+        "name": "PublishHtmlReport"
+      }
     }
   ],
   "files": [
@@ -44,6 +54,10 @@
     {
       "path": "images/icon.png",
       "addressable": true
+    },
+    {
+      "path": "dist-task/PublishHtmlReport",
+      "packagePath": "PublishHtmlReport"
     }
   ]
 }
