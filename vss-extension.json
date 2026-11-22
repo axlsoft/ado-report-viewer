@@ -21,7 +21,8 @@
     }
   ],
   "scopes": [
-    "vso.build"
+    "vso.build",
+    "vso.release"
   ],
   "contributions": [
     {
@@ -33,6 +34,17 @@
       "properties": {
         "name": "Reports",
         "uri": "dist/tab.html"
+      }
+    },
+    {
+      "id": "release-reports-tab",
+      "type": "ms.vss-web.tab",
+      "targets": [
+        "ms.vss-releaseManagement-web.release-details-view"
+      ],
+      "properties": {
+        "name": "Reports",
+        "uri": "dist/tab.html?view=release"
       }
     },
     {

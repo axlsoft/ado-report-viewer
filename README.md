@@ -2,12 +2,13 @@
 
 View static HTML reports (test results, coverage, and similar) directly on an Azure Pipelines run, without downloading artifacts or hosting the reports anywhere.
 
-The extension adds a **Reports** tab to the pipeline run page. Any pipeline step can attach a report folder to the run, and the tab opens it in place, with its styles, scripts, images, videos, and links between pages intact.
+The extension adds a **Reports** tab to the pipeline run page, and to the release page of classic release pipelines. Any pipeline step can attach a report folder to the run, and the tab opens it in place, with its styles, scripts, images, videos, and links between pages intact.
 
 ## Features
 
 - **Reports where the run is.** Every attached report appears in the run's Reports tab. Switch between them with buttons, or with a drop-down list when there are more than four.
 - **Live while the run is in progress.** Reports attached by later stages appear without reloading the page.
+- **YAML and classic pipelines.** Works in YAML pipelines, classic build pipelines, and classic release pipelines.
 - **Matrix-friendly.** Reports with the same name from different jobs are labeled with the job name, such as `E2E · Linux` and `E2E · Windows`.
 - **Remembers your place.** The tab reopens the report you last viewed for each pipeline, and keeps report settings such as a dark or light theme.
 - **Full reports, not screenshots.** Multi-page reports, client-side routing, embedded media, and file downloads all work.
@@ -20,7 +21,7 @@ The extension is private. It has to be shared with your Azure DevOps organizatio
 
 1. Once it has been shared, an organization administrator installs it from **Organization settings → Extensions → Shared**.
 2. Add the **Publish HTML report** task to the pipelines that produce reports (see [Attach a Report](#attach-a-report)).
-3. Open a pipeline run and select the **Reports** tab.
+3. Open a pipeline run, or a release, and select the **Reports** tab.
 
 ## Attach a Report
 
@@ -67,6 +68,10 @@ Attach as many reports as you like, from any stage or job:
 The task fails, rather than attaching a report the tab can't open, when the report exceeds the [archive limits](#limitations).
 
 If the entry page is missing from the archive, the tab opens `index.html`. If that's missing too, it opens the only HTML page at the top of the archive, or asks you to choose when there are several.
+
+### Classic Release Pipelines
+
+Add **Publish HTML report** to a stage's job, like any other task. The release's **Reports** tab lists the reports from every stage that has deployed. Reports with the same name from different stages are labeled with the stage name, such as `E2E · QA` and `E2E · Production`, and with the job name too when the stage has several jobs. When a stage is redeployed, the tab shows the reports from its latest deployment.
 
 ## Supported Reports
 
